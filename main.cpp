@@ -33,7 +33,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 }
 
 
-std::wstring ConvertString(const std::string& str) {
+std::wstring ConvertString(const std::string& str)
+{
   if (str.empty()) {
     return std::wstring();
   }
@@ -47,7 +48,8 @@ std::wstring ConvertString(const std::string& str) {
   return result;
 }
 
-std::string ConvertString(const std::wstring& str) {
+std::string ConvertString(const std::wstring& str)
+{
   if (str.empty()) {
     return std::string();
   }
@@ -61,7 +63,8 @@ std::string ConvertString(const std::wstring& str) {
   return result;
 }
 
-void Log(const std::string& message) {
+void Log(const std::string& message)
+{
   OutputDebugStringA(message.c_str());
 }
 
@@ -162,11 +165,24 @@ ID3D12Resource* CreateBufferResource(ID3D12Device* device, size_t size)
 
   return vertexResource;
 }
+ID3D12DescriptorHeap* CreateDescriptorHeap(
+  ID3D12Device* device, D3D12_DESCRIPTOR_HEAP_TYPE heapType, UINT numDescriptors, bool shaderVisible)
+{
+  ID3D12DescriptorHeap* descriptorHeap = nullptr;
+  D3D12_DESCRIPTOR_HEAP_DESC descriptorHeapDesc{};
+  descriptorHeapDesc.Type = heapType;
+  descriptorHeapDesc.NumDescriptors = numDescriptors;
+  descriptorHeapDesc.Flags = shaderVisible ? D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE : D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+  HRESULT hr = device->CreateDescriptorHeap(&descriptorHeapDesc, IID_PPV_ARGS(&descriptorHeap));
+  assert(SUCCEEDED(hr));
+  return descriptorHeap;
+}
 
 
 
 // Windowsアプリでのエントリーポイント(main関数)
-int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
+{
 
 #pragma region Windowの生成
   WNDCLASS wc{};
@@ -194,7 +210,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
     nullptr,                // メニューハンドル
     wc.hInstance,           // インスタンスハンドル
     nullptr);               // オプション
-    // ウィンドウを表示する
+  // ウィンドウを表示する
   ShowWindow(hwnd, SW_SHOW);
 
 #pragma endregion
@@ -226,10 +242,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
   IDXGIAdapter4* useAdapter = nullptr;
   // 良い順にアダプタを頼む
   for (
-    UINT i = 0; 
+    UINT i = 0;
     dxgiFactory->EnumAdapterByGpuPreference(
-     i,
-      DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, 
+      i,
+      DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
       IID_PPV_ARGS(&useAdapter)
     ) != DXGI_ERROR_NOT_FOUND;
     ++i) {
@@ -347,17 +363,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 #pragma region DescriptorHeapの作成
   // ディスクリプタヒープの生成
-  ID3D12DescriptorHeap* rtvDescriptorHeap = nullptr;
-  D3D12_DESCRIPTOR_HEAP_DESC rtvDescriptorHeapDesc{};
-  rtvDescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV; // レンダーターゲットビュー用
-  rtvDescriptorHeapDesc.NumDescriptors = 2; // ダブルバッファ用に2つ。多くても別に構わない
-  hr = device->CreateDescriptorHeap(&rtvDescriptorHeapDesc, IID_PPV_ARGS(&rtvDescriptorHeap));
-  // ディスクリプタヒープが作れなかったので起動できない
-  assert(SUCCEEDED(hr));
+  ID3D12DescriptorHeap* rtvDescriptorHeap = CreateDescriptorHeap(device, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 2, false);
+//  ID3D12DescriptorHeap* srvDescriptorHeap = CreateDescriptorHeap(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 128, true);
+// ■ 02_03p12まで。やた
 #pragma endregion
 
-  // SwapChainからResourceを引っ張ってくる
-  ID3D12Resource* swapChainResources[2] = { nullptr };
+    // SwapChainからResourceを引っ張ってくる
+    ID3D12Resource* swapChainResources[2] = { nullptr };
   hr = swapChain->GetBuffer(0, IID_PPV_ARGS(&swapChainResources[0]));
   // うまく取得できなければ起動できない
   assert(SUCCEEDED(hr));
@@ -592,7 +604,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
       TranslateMessage(&msg);
       DispatchMessage(&msg);
     }
-    else 
+    else
     {
       float r = transform.rotate_.y;
       r += 0.5f;
@@ -602,12 +614,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 //      transform.translate_.y = std::sinf(angle);
       //cameraTransform.translate_.z = -std::sinf(angle) * 20 - 25;
 
-      
+
       Matrix4x4 worldMatrix = Matrix4x4::MakeAffineMatrix(transform);
       Matrix4x4 cameraMatrix = Matrix4x4::MakeAffineMatrix(cameraTransform);
       Matrix4x4 viewMatrix = cameraMatrix.Inverse();
       Matrix4x4 projectionMatrix = Matrix4x4::MakePerspectiveMatrix(0.45f, float(kClientWidth) / float(kClientHeight), 0.1f, 100.0f);
-      Matrix4x4 worldViewProjectionMatrix = worldMatrix* (viewMatrix* projectionMatrix);
+      Matrix4x4 worldViewProjectionMatrix = worldMatrix * (viewMatrix * projectionMatrix);
       *wvpData = worldViewProjectionMatrix;
 
 
@@ -630,8 +642,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
       commandList->ResourceBarrier(1, &barrier);
 
 
-      
-      
+
+
       // 描画先のRTVを設定する
       commandList->OMSetRenderTargets(1, &rtvHandles[backBufferIndex], false, nullptr);
       // 指定した色で画面全体をクリアする
@@ -697,7 +709,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
       assert(SUCCEEDED(hr));
     }
   }
-  
+
 
   wvpResource->Release();
   materialResource->Release();
@@ -705,7 +717,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
   graphicsPipelineState->Release();
   signatureBlob->Release();
   if (errorBlob) {
-      errorBlob->Release();
+    errorBlob->Release();
   }
   rootSignature->Release();
   pixelShaderBlob->Release();
