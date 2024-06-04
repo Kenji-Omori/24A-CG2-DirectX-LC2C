@@ -10,10 +10,7 @@ struct VertexShaderOutput
   float32_t4 position : SV_POSITION;
 };
 
-struct VertexShaderInput
-{
-  float32_t4 position : POSITION0;
-};
+#include "Object3d.hlsli"
 
 VertexShaderOutput main(VertexShaderInput input)
 {

@@ -11,6 +11,12 @@
 #include <dxcapi.h>
 #include <cmath>
 
+#include "externals/imgui/imgui.h"
+#include "externals/imgui/imgui_impl_dx12.h"
+#include "externals/imgui/imgui_impl_win32.h"
+
+
+
 #pragma comment(lib, "dxguid.lib")
 
 #pragma comment(lib, "d3d12.lib")
@@ -20,9 +26,14 @@
 #include "Math.h"
 
 
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
+  if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wparam, lparam)) {
+    return true;
+  }
+
   switch (msg)
   {
   case WM_DESTROY:
@@ -364,8 +375,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 #pragma region DescriptorHeapの作成
   // ディスクリプタヒープの生成
   ID3D12DescriptorHeap* rtvDescriptorHeap = CreateDescriptorHeap(device, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 2, false);
-//  ID3D12DescriptorHeap* srvDescriptorHeap = CreateDescriptorHeap(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 128, true);
-// ■ 02_03p12まで。やた
+  ID3D12DescriptorHeap* srvDescriptorHeap = CreateDescriptorHeap(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 128, true);
 #pragma endregion
 
     // SwapChainからResourceを引っ張ってくる
@@ -574,6 +584,19 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
   scissorRect.bottom = kClientHeight;
 
 
+  // ImGuiの初期化。詳細はさして重要ではないので解説は省略する。
+// こういうもんである
+  IMGUI_CHECKVERSION();
+  ImGui::CreateContext();
+  ImGui::StyleColorsDark();
+  ImGui_ImplWin32_Init(hwnd);
+  ImGui_ImplDX12_Init(device,
+    swapChainDesc.BufferCount,
+    rtvDesc.Format,
+    srvDescriptorHeap,
+    srvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+    srvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
+
 
 
 
@@ -590,6 +613,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
   float r = 0;
   float g = 0;
   float b = 0;
+  float inputFloat3[] = { r,g,b };
 
   Transform transform{ {1,1,1},{0,0,0},{0,0,0} };
   Transform cameraTransform{ {1,1,1},{0,0,0},{0,0,-10} };
@@ -599,6 +623,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
   MSG msg{};
   // ウィンドウの×ボタンが押されるまでループ
   while (msg.message != WM_QUIT) {
+
     // Windowにメッセージが来てたら最優先で処理させる
     if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
       TranslateMessage(&msg);
@@ -606,6 +631,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     }
     else
     {
+      ImGui_ImplDX12_NewFrame();
+      ImGui_ImplWin32_NewFrame();
+      ImGui::NewFrame();
+
+
+
+
       float r = transform.rotate_.y;
       r += 0.5f;
       //transform.rotate_.y =r;
@@ -623,9 +655,21 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
       *wvpData = worldViewProjectionMatrix;
 
 
+      ImGui::Text("ImGuiTest");
+      ImGui::Text("Color: %0.2f, %0.2f, %0.2f", materialData->x, materialData->y, materialData->z);
+      ImGui::SliderFloat3("Color",inputFloat3, 0,1);
+      materialData->x = inputFloat3[0];
+      materialData->y = inputFloat3[1];
+      materialData->z = inputFloat3[2];
+
+
+
+
+
+      // ImGuiの内部コマンドを生成する
+      ImGui::Render();
       // これから書き込むバックバッファのインデックスを取得
       UINT backBufferIndex = swapChain->GetCurrentBackBufferIndex();
-
       // TransitionBarrierの設定
       D3D12_RESOURCE_BARRIER barrier{};
       // 今回のバリアはTransition
@@ -643,12 +687,16 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 
 
-
       // 描画先のRTVを設定する
       commandList->OMSetRenderTargets(1, &rtvHandles[backBufferIndex], false, nullptr);
       // 指定した色で画面全体をクリアする
       float clearColor[] = { 0.1f, 0.25f, 0.5f, 1.0f }; // 青っぽい色。RGBAの順
       commandList->ClearRenderTargetView(rtvHandles[backBufferIndex], clearColor, 0, nullptr);
+      // 描画用のDescriptorHeapの設定
+      ID3D12DescriptorHeap* descriptorHeaps[] = { srvDescriptorHeap };
+      commandList->SetDescriptorHeaps(1, descriptorHeaps);
+
+
 
       // マテリアルCBufferの場所を設定
 
@@ -669,6 +717,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
       commandList->SetGraphicsRootConstantBufferView(1, wvpResource->GetGPUVirtualAddress());
       // 描画！（DrawCall/ドローコール）。3頂点で1つのインスタンス。インスタンスについては今後
       commandList->DrawInstanced(3, 1, 0, 0);
+
+      // 実際のcommandListのImGuiの描画コマンドを積む
+      ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList);
 
       // 画面に描く処理はすべて終わり、画面に映すので、状態を遷移
       // 今回はRenderTargetからPresentにする
@@ -709,6 +760,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
       assert(SUCCEEDED(hr));
     }
   }
+  // ImGuiの終了処理。詳細はさして重要ではないので解説は省略する。
+// こういうもんである。初期化と逆順に行う
+  ImGui_ImplDX12_Shutdown();
+  ImGui_ImplWin32_Shutdown();
+  ImGui::DestroyContext();
+
+
 
 
   wvpResource->Release();
@@ -731,6 +789,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 
   fence->Release();
+  srvDescriptorHeap->Release();
   rtvDescriptorHeap->Release();
   swapChainResources[0]->Release();
   swapChainResources[1]->Release();
